@@ -19,8 +19,9 @@ export async function fetchForexKlines(
   interval: Timeframe,
   limit = 300,
 ): Promise<Candle[]> {
+  const tdSymbol = symbol.replace("XAUUSD", "XAU/USD").replace("XAGUSD", "XAG/USD").replace("EURUSD", "EUR/USD").replace("GBPUSD", "GBP/USD").replace("USDJPY", "USD/JPY");
   const tdInterval = toTDInterval(interval);
-  const url = `${BASE}/time_series?symbol=${symbol}&interval=${tdInterval}&outputsize=${limit}&apikey=${API_KEY}&format=JSON`;
+  const url = `${BASE}/time_series?symbol=${tdSymbol}&interval=${tdInterval}&outputsize=${limit}&apikey=${API_KEY}&format=JSON`;
   const res = await fetch(url, { cache: "no-store" });
   if (!res.ok) throw new Error(`twelvedata klines ${res.status}`);
   const data = await res.json();
@@ -38,7 +39,8 @@ export async function fetchForexKlines(
 }
 
 export async function fetchForexPrice(symbol: string): Promise<number> {
-  const url = `${BASE}/price?symbol=${symbol}&apikey=${API_KEY}`;
+  const tdSymbol = symbol.replace("XAUUSD", "XAU/USD").replace("XAGUSD", "XAG/USD").replace("EURUSD", "EUR/USD").replace("GBPUSD", "GBP/USD").replace("USDJPY", "USD/JPY");
+  const url = `${BASE}/price?symbol=${tdSymbol}&apikey=${API_KEY}`;
   const res = await fetch(url, { cache: "no-store" });
   if (!res.ok) throw new Error(`twelvedata price ${res.status}`);
   const data = await res.json();
