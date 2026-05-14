@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { Timeframe } from "@/lib/binance/types";
+import type { Timeframe } from "../binance/types";
 
 export type IndicatorKey =
   | "ema20"
@@ -49,7 +49,6 @@ export const INDICATOR_COLORS: Record<IndicatorKey, string> = {
   volume: "#787b86",
 };
 
-// ✅ XAUUSD y XAGUSD agregados al watchlist
 export const DEFAULT_WATCHLIST = [
   "BTCUSDT",
   "ETHUSDT",
@@ -65,8 +64,8 @@ export const DEFAULT_WATCHLIST = [
   "XAGUSD",
 ];
 
-// ✅ Función para detectar símbolos Forex
 export const FOREX_SYMBOLS = ["XAUUSD", "XAGUSD", "EURUSD", "GBPUSD", "USDJPY"];
+
 export function isForexSymbol(symbol: string): boolean {
   return FOREX_SYMBOLS.includes(symbol);
 }
