@@ -49,6 +49,7 @@ export const INDICATOR_COLORS: Record<IndicatorKey, string> = {
   volume: "#787b86",
 };
 
+// ✅ XAUUSD y XAGUSD agregados al watchlist
 export const DEFAULT_WATCHLIST = [
   "BTCUSDT",
   "ETHUSDT",
@@ -60,27 +61,28 @@ export const DEFAULT_WATCHLIST = [
   "AVAXUSDT",
   "LINKUSDT",
   "MATICUSDT",
+  "XAUUSD",
+  "XAGUSD",
 ];
+
+// ✅ Función para detectar símbolos Forex
+export const FOREX_SYMBOLS = ["XAUUSD", "XAGUSD", "EURUSD", "GBPUSD", "USDJPY"];
+export function isForexSymbol(symbol: string): boolean {
+  return FOREX_SYMBOLS.includes(symbol);
+}
 
 interface ChartState {
   symbol: string;
   timeframe: Timeframe;
-  /** Indicator is added to the chart (appears in pill + renders unless hidden) */
   indicators: Record<IndicatorKey, boolean>;
-  /** Indicator is hidden (eye icon off) — kept in pill list, just not rendered */
   hidden: Record<IndicatorKey, boolean>;
-  /** Periods and parameters for each indicator */
   config: IndicatorConfig;
   watchlist: string[];
-
-  // Ephemeral UI state (not persisted)
   tool: DrawingTool;
   priceLines: PriceLine[];
   symbolDialogOpen: boolean;
-  /** Which indicator's settings dialog is open (null = closed) */
   settingsTarget: IndicatorKey | null;
 
-  // Actions
   setSymbol: (s: string) => void;
   setTimeframe: (t: Timeframe) => void;
   toggleIndicator: (key: IndicatorKey) => void;
@@ -129,7 +131,6 @@ export const useChartStore = create<ChartState>()(
       toggleIndicator: (key) =>
         set((s) => ({
           indicators: { ...s.indicators, [key]: !s.indicators[key] },
-          // When re-adding, ensure not hidden
           hidden: !s.indicators[key]
             ? { ...s.hidden, [key]: false }
             : s.hidden,
