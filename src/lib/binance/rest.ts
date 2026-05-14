@@ -1,78 +1,52 @@
-import type { Candle, SymbolInfo, Ticker24h, Timeframe } from "./types";
+// src/lib/twelvedata/rest.ts
+import type { Candle, Timeframe } from "../binance/types";
 
-const BASE = "https://api.binance.com/api/v3";
+const BASE = "https://api.twelvedata.com";
+const API_KEY = "04693e69001f4cb4a0e4f2f657f36ab8"; 
 
-export async function fetchKlines(
+function toTDInterval(tf: Timeframe): string {
+  const map: Record<string, string> = {
+    "1m": "1min", "3m": "3min", "5m": "5min", "15m": "15min",
+    "30m": "30min", "1h": "1h", "2h": "2h", "4h": "4h",
+    "6h": "6h", "8h": "8h", "12h": "12h", "1d": "1day",
+    "3d": "3day", "1w": "1week", "1M": "1month",
+  };
+  return map[tf] ?? "1h";
+}
+
+export async function fetchForexKlines(
   symbol: string,
   interval: Timeframe,
-  limit = 1000,
+  limit = 300,
 ): Promise<Candle[]> {
-  const url = `${BASE}/klines?symbol=${symbol.toUpperCase()}&interval=${interval}&limit=${limit}`;
+  const tdInterval = toTDInterval(interval);
+  const url = `${BASE}/time_series?symbol=${symbol}&interval=${tdInterval}&outputsize=${limit}&apikey=${API_KEY}&format=JSON`;
   const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) throw new Error(`klines ${res.status}`);
-  const data = (await res.json()) as unknown[][];
-  return data.map((k) => ({
-    time: Math.floor((k[0] as number) / 1000),
-    open: parseFloat(k[1] as string),
-    high: parseFloat(k[2] as string),
-    low: parseFloat(k[3] as string),
-    close: parseFloat(k[4] as string),
-    volume: parseFloat(k[5] as string),
+  if (!res.ok) throw new Error(`twelvedata klines ${res.status}`);
+  const data = await res.json();
+  if (data.status === "error") throw new Error(`Twelve Data: ${data.message}`);
+  const values = data.values as Array<{
+    datetime: string; open: string; high: string; low: string; close: string; volume?: string;
+  }>;
+  return values.reverse().map((v) => ({
+    time: Math.floor(new Date(v.datetime).getTime() / 1000),
+    open: parseFloat(v.open), high: parseFloat(v.high),
+    low: parseFloat(v.low), close: parseFloat(v.close),
+    volume: v.volume ? parseFloat(v.volume) : 0,
     isFinal: true,
   }));
 }
 
-export async function fetchTicker24h(symbol: string): Promise<Ticker24h> {
-  const url = `${BASE}/ticker/24hr?symbol=${symbol.toUpperCase()}`;
+export async function fetchForexPrice(symbol: string): Promise<number> {
+  const url = `${BASE}/price?symbol=${symbol}&apikey=${API_KEY}`;
   const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) throw new Error(`ticker ${res.status}`);
-  const t = await res.json();
-  return {
-    symbol: t.symbol,
-    lastPrice: parseFloat(t.lastPrice),
-    priceChange: parseFloat(t.priceChange),
-    priceChangePercent: parseFloat(t.priceChangePercent),
-    highPrice: parseFloat(t.highPrice),
-    lowPrice: parseFloat(t.lowPrice),
-    volume: parseFloat(t.volume),
-    quoteVolume: parseFloat(t.quoteVolume),
-  };
+  if (!res.ok) throw new Error(`twelvedata price ${res.status}`);
+  const data = await res.json();
+  if (data.status === "error") throw new Error(data.message);
+  return parseFloat(data.price);
 }
 
-export async function fetchTickers24h(symbols: string[]): Promise<Ticker24h[]> {
-  const arr = JSON.stringify(symbols.map((s) => s.toUpperCase()));
-  const url = `${BASE}/ticker/24hr?symbols=${encodeURIComponent(arr)}`;
-  const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) throw new Error(`tickers ${res.status}`);
-  const data = await res.json();
-  return data.map((t: Record<string, string>) => ({
-    symbol: t.symbol,
-    lastPrice: parseFloat(t.lastPrice),
-    priceChange: parseFloat(t.priceChange),
-    priceChangePercent: parseFloat(t.priceChangePercent),
-    highPrice: parseFloat(t.highPrice),
-    lowPrice: parseFloat(t.lowPrice),
-    volume: parseFloat(t.volume),
-    quoteVolume: parseFloat(t.quoteVolume),
-  }));
-}
-
-let cachedSymbols: SymbolInfo[] | null = null;
-export async function fetchExchangeSymbols(): Promise<SymbolInfo[]> {
-  if (cachedSymbols) return cachedSymbols;
-  const res = await fetch(`${BASE}/exchangeInfo`, { cache: "force-cache" });
-  if (!res.ok) throw new Error(`exchangeInfo ${res.status}`);
-  const data = await res.json();
-  cachedSymbols = data.symbols
-    .filter(
-      (s: { status: string; quoteAsset: string }) =>
-        s.status === "TRADING" && s.quoteAsset === "USDT",
-    )
-    .map((s: { symbol: string; baseAsset: string; quoteAsset: string; status: string }) => ({
-      symbol: s.symbol,
-      baseAsset: s.baseAsset,
-      quoteAsset: s.quoteAsset,
-      status: s.status,
-    }));
-  return cachedSymbols!;
+export const FOREX_SYMBOLS = ["XAUUSD", "XAGUSD", "EURUSD", "GBPUSD", "USDJPY"];
+export function isForexSymbol(symbol: string): boolean {
+  return FOREX_SYMBOLS.includes(symbol);
 }

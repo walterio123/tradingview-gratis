@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { fetchTickers24h } from "@/lib/binance/rest";
 import { getBinanceWS } from "@/lib/binance/ws";
+import { fetchForexPrice } from "@/lib/twelvedata/rest";
+import { isForexSymbol } from "@/lib/store/chart-store";
 import { useChartStore } from "@/lib/store/chart-store";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatPrice, formatPct } from "@/lib/format";
@@ -24,11 +26,57 @@ export function Watchlist() {
   const [rows, setRows] = useState<Record<string, Row>>({});
   const [flash, setFlash] = useState<Record<string, "up" | "down" | null>>({});
 
+  // Carga y actualiza precios Forex (Twelve Data) cada 30 segundos
   useEffect(() => {
-    if (watchlist.length === 0) return;
+    const forexSymbols = watchlist.filter(isForexSymbol);
+    if (forexSymbols.length === 0) return;
+
+    forexSymbols.forEach(async (sym) => {
+      try {
+        const price = await fetchForexPrice(sym);
+        setRows((prev) => ({
+          ...prev,
+          [sym]: { symbol: sym, price, pct: 0 },
+        }));
+      } catch (e) {
+        console.error(`Error cargando ${sym}:`, e);
+      }
+    });
+
+    const interval = setInterval(() => {
+      forexSymbols.forEach(async (sym) => {
+        try {
+          const price = await fetchForexPrice(sym);
+          setRows((prev) => {
+            const prevRow = prev[sym];
+            if (prevRow) {
+              const dir = price > prevRow.price ? "up" : price < prevRow.price ? "down" : null;
+              if (dir) {
+                setFlash((f) => ({ ...f, [sym]: dir }));
+                setTimeout(() => setFlash((f) => ({ ...f, [sym]: null })), 300);
+              }
+            }
+            return {
+              ...prev,
+              [sym]: { symbol: sym, price, pct: prevRow?.pct ?? 0 },
+            };
+          });
+        } catch (e) {
+          console.error(`Error actualizando ${sym}:`, e);
+        }
+      });
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, [watchlist]);
+
+  // Carga y WebSocket para cryptos (Binance)
+  useEffect(() => {
+    const cryptoSymbols = watchlist.filter((s) => !isForexSymbol(s));
+    if (cryptoSymbols.length === 0) return;
     let cancelled = false;
 
-    fetchTickers24h(watchlist)
+    fetchTickers24h(cryptoSymbols)
       .then((tickers) => {
         if (cancelled) return;
         const map: Record<string, Row> = {};
@@ -39,29 +87,21 @@ export function Watchlist() {
             pct: t.priceChangePercent,
           };
         });
-        setRows(map);
+        setRows((prev) => ({ ...prev, ...map }));
       })
       .catch(console.error);
 
     const ws = getBinanceWS();
-    const unsub = ws.subscribeMiniTickers(watchlist, (tick) => {
+    const unsub = ws.subscribeMiniTickers(cryptoSymbols, (tick) => {
       setRows((prev) => {
         const prevRow = prev[tick.symbol];
         if (prevRow) {
           if (tick.close > prevRow.price) {
             setFlash((f) => ({ ...f, [tick.symbol]: "up" }));
-            setTimeout(
-              () =>
-                setFlash((f) => ({ ...f, [tick.symbol]: null })),
-              300,
-            );
+            setTimeout(() => setFlash((f) => ({ ...f, [tick.symbol]: null })), 300);
           } else if (tick.close < prevRow.price) {
             setFlash((f) => ({ ...f, [tick.symbol]: "down" }));
-            setTimeout(
-              () =>
-                setFlash((f) => ({ ...f, [tick.symbol]: null })),
-              300,
-            );
+            setTimeout(() => setFlash((f) => ({ ...f, [tick.symbol]: null })), 300);
           }
         }
         return {
@@ -107,6 +147,7 @@ export function Watchlist() {
             const row = rows[s];
             const isActive = s === symbol;
             const f = flash[s];
+            const isForex = isForexSymbol(s);
             return (
               <div
                 key={s}
@@ -119,9 +160,11 @@ export function Watchlist() {
               >
                 <div className="flex items-center gap-2">
                   <span className="font-medium text-tv-text">
-                    {s.replace("USDT", "")}
+                    {isForex ? s : s.replace("USDT", "")}
                   </span>
-                  <span className="text-[10px] text-tv-text-dim">USDT</span>
+                  <span className="text-[10px] text-tv-text-dim">
+                    {isForex ? "Oanda" : "USDT"}
+                  </span>
                 </div>
                 <span
                   className={cn(
@@ -144,7 +187,7 @@ export function Watchlist() {
                         : "text-tv-text-muted",
                     )}
                   >
-                    {row ? formatPct(row.pct) : "—"}
+                    {row ? (isForex ? "FOREX" : formatPct(row.pct)) : "—"}
                   </span>
                   <button
                     onClick={(e) => {
